@@ -1,0 +1,63 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: nginx-ingress-controller
+  namespace: ingress-nginx 
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ingress-nginx
+  template:
+    metadata:
+      labels:
+        app: ingress-nginx
+      annotations:
+        prometheus.io/port: '10254'
+        prometheus.io/scrape: 'true'
+    spec:
+      containers:
+        - name: nginx-ingress-controller
+          # 新版本的 nginx ingress 里的 nginx 和安卓手机上常用的 okhttp 在 http/2 上不兼容，主要是旧版本(2.x)的 okhttp 对 Dynamic Table Size 支持不好
+          # 解决方案：更新安卓上使用的 okhttp 库，使用最新版本的 nginx ingress，方便日后演进; 为了兼容性，保持这个旧版本的 nginx ingress
+          # 另外有一点值得注意，新旧版本的 nginx ingres 对 ingress annotation 格式的支持是不一样的
+          # 新版本: nginx.ingress.kubernetes.io/auth-type: basic
+          # 旧版本: ingress.kubernetes.io/auth-type: basic
+          image: ibmcom/nginx-ingress-controller:0.9.0-beta.13
+          args:
+            - /nginx-ingress-controller
+            - --default-backend-service=$(POD_NAMESPACE)/default-http-backend
+            - --configmap=$(POD_NAMESPACE)/nginx-configuration
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+          - name: http
+            containerPort: 80
+          - name: https
+            containerPort: 443
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /healthz
+              port: 10254
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /healthz
+              port: 10254
+              scheme: HTTP
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
